@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Student {
+  email         String   @id
+  mobileNumber  String?
+  rollNumber    String   @unique
+  fullName      String
+  program       String
+  course        String
+  semester      String
+  purpose       String
+  firebaseToken String?  @db.Text
+
+  @@map("students")
+}
+
+model Admin {
+  email        String  @id
+  password     String
+  fullName     String
+  mobileNumber String?
+
+  @@map("admins")
+}
+
+model AdminOtp {
+  email        String   @id
+  otp          String
+  otpCreatedAt DateTime @default(now()) @map("otp_created_at")
+
+  @@map("admin_otp")
+}
+
+model WhatsAppOtp {
+  email        String   @id
+  mobileNumber String
+  otp          String
+  createdAt    DateTime @default(now())
+  verified     Boolean  @default(false)
+
+  @@map("whatsapp_otp")
+}
+
+model PasswordRequest {
+  email     String   @id
+  reason    String
+  password  String
+  timestamp DateTime @default(now())
+
+  @@map("password_requests")
+}
+
+model Log {
+  id        Int      @id @default(autoincrement())
+  user      String
+  message   String
+  timestamp DateTime @default(now())
+
+  @@map("logs")
+}
+
+model BonafideCertificate {
+  uid              String   @id @default(uuid())
+  studentName      String
+  enrollmentNumber String
+  course           String
+  semester         String
+  purpose          String
+  generatedAt      DateTime @default(now())
+  expiresAt        DateTime
+  isActive         Boolean  @default(true)
+  isSigned         Boolean  @default(false)
+
+  @@map("bonafide_certificates")
+}
+
+model OtpUser {
+  emailId      String    @id @map("email_id")
+  otp          String?
+  otpCreatedAt DateTime? @map("otp_created_at")
+
+  @@map("users")
+}
