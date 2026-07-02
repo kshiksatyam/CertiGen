@@ -1,4 +1,4 @@
-# CertiGen (Next.js Migration)
+# CertiGen
 
 CertiGen is a secure, modern digital portal for certificate generation, digital signing, and automated delivery for (`ExamCell IIIT-Lucknow`).
 
