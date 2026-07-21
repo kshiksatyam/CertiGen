@@ -3,24 +3,107 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // directUrl is needed for migrations on Neon (non-pooled).
+  // Add DIRECT_URL to .env.local pointing to the non-pooled connection string.
+  // directUrl = env("DIRECT_URL")
 }
 
-model Student {
-  email         String   @id
-  mobileNumber  String?
-  rollNumber    String   @unique
-  fullName      String
-  program       String
-  course        String
-  semester      String
-  purpose       String
-  firebaseToken String?  @db.Text
+// ─────────────────────────────────────────────────────────────────────────────
+// BETTER AUTH REQUIRED MODELS
+// These are used exclusively by the Better Auth Prisma adapter.
+// Do NOT write to these directly from application code — use the auth client.
+// ─────────────────────────────────────────────────────────────────────────────
 
-  @@map("students")
+model User {
+  id               String     @id @default(cuid())
+  name             String
+  email            String     @unique
+  emailVerified    Boolean    @default(false)
+  image            String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  // Role field added for Module 3 (student | admin)
+  role             String?    @default("student")
+  // Two-factor fields (two-factor plugin — Module 4)
+  twoFactorEnabled Boolean    @default(false)
+
+  accounts         Account[]
+  sessions         Session[]
+  twoFactors       TwoFactor[]
+
+  @@map("user")
 }
 
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model Account {
+  id                String    @id @default(cuid())
+  userId            String
+  accountId         String
+  providerId        String
+  accessToken       String?   @db.Text
+  refreshToken      String?   @db.Text
+  idToken           String?   @db.Text
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope             String?
+  password          String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("verification")
+}
+
+// Two-factor plugin (mandatory TOTP 2FA for admins — Module 4)
+model TwoFactor {
+  id          String  @id @default(cuid())
+  secret      String
+  backupCodes String  @db.Text
+  userId      String
+
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("twoFactor")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APPLICATION MODELS
+// These are the domain models for ExamCell (CertiGen).
+// All reads/writes go through lib/services/*.js — never directly from routes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Admin table: legacy admin accounts (separate from Better Auth User).
+// Better Auth User with role="admin" is the auth identity; this table stores
+// extra admin profile data that may be needed outside the auth system.
 model Admin {
   email        String  @id
   password     String
@@ -30,6 +113,8 @@ model Admin {
   @@map("admins")
 }
 
+// Short-lived OTPs generated for admin email verification (pre–Better Auth flow).
+// May be deprecated once Module 2's email-otp plugin is fully live.
 model AdminOtp {
   email        String   @id
   otp          String
@@ -38,6 +123,23 @@ model AdminOtp {
   @@map("admin_otp")
 }
 
+// Student roster: one row per enrolled student.
+// `email` is the login identity; `firebaseToken` for push notifications (Module 8).
+model Student {
+  email         String  @id
+  mobileNumber  String?
+  rollNumber    String  @unique
+  fullName      String
+  program       String
+  course        String
+  semester      String
+  purpose       String
+  firebaseToken String? @db.Text
+
+  @@map("students")
+}
+
+// WhatsApp OTP flow for students who choose WhatsApp delivery (Module 7).
 model WhatsAppOtp {
   email        String   @id
   mobileNumber String
@@ -48,6 +150,7 @@ model WhatsAppOtp {
   @@map("whatsapp_otp")
 }
 
+// Password change requests submitted by students, reviewed by admins (Module 10).
 model PasswordRequest {
   email     String   @id
   reason    String
@@ -57,6 +160,7 @@ model PasswordRequest {
   @@map("password_requests")
 }
 
+// Append-only audit log. Written by service layer on sign, send, accept, etc.
 model Log {
   id        Int      @id @default(autoincrement())
   user      String
@@ -66,6 +170,9 @@ model Log {
   @@map("logs")
 }
 
+// One row per bonafide certificate request.
+// `uid` is used as the public download token in the URL.
+// `isSigned` is set true by admin; `isActive` is cleared by the daily cron job.
 model BonafideCertificate {
   uid              String   @id @default(uuid())
   studentName      String
@@ -81,6 +188,10 @@ model BonafideCertificate {
   @@map("bonafide_certificates")
 }
 
+// OTP session store for student email-OTP login.
+// Better Auth's email-otp plugin writes its OTPs to the Verification table;
+// this model is the legacy equivalent kept for backward compatibility during
+// the migration. Remove it once Module 2 is confirmed stable.
 model OtpUser {
   emailId      String    @id @map("email_id")
   otp          String?
